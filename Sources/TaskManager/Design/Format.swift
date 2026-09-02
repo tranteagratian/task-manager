@@ -13,6 +13,13 @@ enum Format {
         ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .memory)
     }
 
+    static func bytesExact(_ value: UInt64) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        let grouped = formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        return "\(grouped) bytes"
+    }
+
     static func bytesPerSecond(_ value: Double) -> String {
         let mb = value / 1_048_576
         if mb < 0.05 { return "0 MB/s" }

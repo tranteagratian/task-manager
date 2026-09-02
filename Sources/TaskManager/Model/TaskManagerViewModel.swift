@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import TaskManagerCore
 
@@ -85,5 +86,36 @@ final class TaskManagerViewModel: ObservableObject {
 
     func isStillRunning(_ group: ProcessGroup) -> Bool {
         group.members.contains { ProcessTermination.isAlive(pid: $0.id) }
+    }
+
+    // MARK: - Restart
+
+    func canRestart(_ group: ProcessGroup) -> Bool {
+        group.isApp && !group.isProtected && group.bundlePath?.hasSuffix(".app") == true
+    }
+
+    func restart(_ group: ProcessGroup) {
+        guard canRestart(group), let bundlePath = group.bundlePath else { return }
+        let url = URL(fileURLWithPath: bundlePath)
+        for member in group.members {
+            ProcessTermination.requestTermination(pid: member.id)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            NSWorkspace.shared.openApplication(at: url, configuration: .init(), completionHandler: nil)
+        }
+    }
+
+    // MARK: - Efficiency mode
+
+    func isEfficiencyMode(_ group: ProcessGroup) -> Bool {
+        group.members.allSatisfy { ProcessPriority.isEfficiencyMode(pid: $0.id) }
+    }
+
+    func setEfficiencyMode(_ group: ProcessGroup, enabled: Bool) {
+        guard !group.isProtected else { return }
+        for member in group.members {
+            ProcessPriority.setEfficiencyMode(pid: member.id, enabled: enabled)
+        }
     }
 }

@@ -6,7 +6,7 @@ enum ProcessSortKey: String {
     case name, cpu, memory, disk
 }
 
-private struct SelectionKey: Equatable {
+private struct SelectionKey: Hashable {
     let isApp: Bool
     let id: Int32
 }
@@ -17,8 +17,10 @@ struct ProcessesView: View {
     @State private var sortKey: ProcessSortKey = .cpu
     @State private var sortAscending: Bool = false
     @State private var selection: SelectionKey?
+    @State private var expandedKeys: Set<SelectionKey> = []
     @State private var pendingEndTask: ProcessGroup?
     @State private var pendingForceQuit: ProcessGroup?
+    @State private var pendingRestart: ProcessGroup?
 
     private var filteredApps: [ProcessGroup] {
         sort(filter(model.appGroups))
@@ -117,20 +119,82 @@ struct ProcessesView: View {
         } message: {
             Text("It didn't quit on its own. Force quitting skips its normal cleanup.")
         }
+        .alert("Restart \(pendingRestart?.name ?? "")?", isPresented: Binding(
+            get: { pendingRestart != nil }, set: { if !$0 { pendingRestart = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { pendingRestart = nil }
+            Button("Restart") {
+                guard let group = pendingRestart else { return }
+                model.restart(group)
+                pendingRestart = nil
+            }
+        } message: {
+            Text("This quits the app and reopens it. Any unsaved work in it will be lost.")
+        }
     }
 
     private func row(for group: ProcessGroup, isApp: Bool) -> some View {
         let key = SelectionKey(isApp: isApp, id: group.id)
+        let isExpanded = expandedKeys.contains(key)
         return VStack(spacing: 0) {
-            ProcessRowView(group: group, maxCPU: maxCPU, maxMemory: maxMemory, maxDisk: maxDisk, isSelected: selection == key)
-                .contentShape(Rectangle())
-                .onTapGesture { selection = key }
-                .contextMenu {
-                    Button("End Task") { pendingEndTask = group }
-                        .disabled(group.isProtected)
-                }
+            ProcessRowView(
+                group: group, maxCPU: maxCPU, maxMemory: maxMemory, maxDisk: maxDisk,
+                isSelected: selection == key, isExpanded: isExpanded,
+                onToggleExpand: group.members.count > 1 ? {
+                    if isExpanded { expandedKeys.remove(key) } else { expandedKeys.insert(key) }
+                } : nil
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { selection = key }
+            .contextMenu { contextMenu(for: group) }
             Divider().padding(.leading, 32)
+
+            if isExpanded {
+                ForEach(group.members.sorted(by: { $0.cpuPercent > $1.cpuPercent })) { member in
+                    MemberRowView(member: member, maxCPU: maxCPU, maxMemory: maxMemory, maxDisk: maxDisk)
+                    Divider().padding(.leading, 48)
+                }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func contextMenu(for group: ProcessGroup) -> some View {
+        if group.members.count > 1 {
+            Button(expandedKeys.contains(SelectionKey(isApp: group.isApp, id: group.id)) ? "Collapse" : "Expand") {
+                let key = SelectionKey(isApp: group.isApp, id: group.id)
+                if expandedKeys.contains(key) { expandedKeys.remove(key) } else { expandedKeys.insert(key) }
+            }
+        }
+        if model.canRestart(group) {
+            Button("Restart") { pendingRestart = group }
+        }
+        Menu("Resource values") {
+            Text("CPU: \(Format.percentPrecise(group.cpuPercent))")
+            Text("Memory: \(Format.bytesExact(group.memoryBytes))")
+            Text("Disk: \(Format.bytesPerSecond(group.diskReadBytesPerSec + group.diskWriteBytesPerSec))")
+        }
+        Divider()
+        Toggle("Efficiency Mode", isOn: Binding(
+            get: { model.isEfficiencyMode(group) },
+            set: { model.setEfficiencyMode(group, enabled: $0) }
+        ))
+        .disabled(group.isProtected)
+        Divider()
+        if let bundlePath = group.bundlePath {
+            Button("Open File Location") {
+                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: bundlePath)])
+            }
+        }
+        Button("Search Online") {
+            let query = group.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? group.name
+            if let url = URL(string: "https://www.google.com/search?q=\(query)") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+        Divider()
+        Button("End Task") { pendingEndTask = group }
+            .disabled(group.isProtected)
     }
 
     private func scheduleForceQuitCheck(for group: ProcessGroup) {
@@ -226,12 +290,29 @@ private struct ProcessRowView: View {
     let maxMemory: UInt64
     let maxDisk: Double
     let isSelected: Bool
+    let isExpanded: Bool
+    let onToggleExpand: (() -> Void)?
 
     private var diskRate: Double { group.diskReadBytesPerSec + group.diskWriteBytesPerSec }
 
     var body: some View {
         HStack(spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Group {
+                    if let onToggleExpand {
+                        Button(action: onToggleExpand) {
+                            Image(systemName: "chevron.right")
+                                .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 12)
+
                 Image(nsImage: icon)
                     .resizable()
                     .frame(width: 18, height: 18)
@@ -273,5 +354,54 @@ private struct ProcessRowView: View {
             return NSWorkspace.shared.icon(forFile: path)
         }
         return NSWorkspace.shared.icon(for: .unixExecutable)
+    }
+}
+
+/// One member of an expanded group — its own PID's numbers, indented under
+/// the group row, no icon of its own (it belongs to the app above it).
+private struct MemberRowView: View {
+    let member: ProcessSnapshot
+    let maxCPU: Double
+    let maxMemory: UInt64
+    let maxDisk: Double
+
+    private var diskRate: Double { member.diskReadBytesPerSec + member.diskWriteBytesPerSec }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("\(member.name)  ·  pid \(member.id)")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 32)
+
+            metricCell(Format.percent(member.cpuPercent), fraction: member.cpuPercent / maxCPU)
+                .frame(width: 80)
+            metricCell(Format.bytes(member.memoryBytes), fraction: Double(member.memoryBytes) / Double(maxMemory))
+                .frame(width: 90)
+            metricCell(Format.bytesPerSecond(diskRate), fraction: diskRate / maxDisk)
+                .frame(width: 90)
+            metricCell("—", fraction: 0)
+                .frame(width: 90)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+    }
+
+    private func metricCell(_ text: String, fraction: Double) -> some View {
+        ZStack(alignment: .trailing) {
+            GeometryReader { geo in
+                Rectangle()
+                    .fill(Color.accentColor.opacity(0.1))
+                    .frame(width: geo.size.width * min(max(fraction, 0), 1))
+                    .frame(maxHeight: .infinity, alignment: .trailing)
+            }
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .padding(.trailing, 4)
+        }
     }
 }
