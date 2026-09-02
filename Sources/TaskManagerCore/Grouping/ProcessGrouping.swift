@@ -7,40 +7,67 @@ import Foundation
 public enum ProcessGrouping {
     public static func group(_ processes: [ProcessSnapshot]) -> (apps: [ProcessGroup], background: [ProcessGroup]) {
         let runningApps = NSWorkspace.shared.runningApplications
-        var appPIDs: [Int32: NSRunningApplication] = [:]
+        var appsByBundlePath: [String: NSRunningApplication] = [:]
+        for app in runningApps {
+            if let path = app.bundleURL?.path {
+                appsByBundlePath[path] = app
+            }
+        }
+        var regularAppPIDs: Set<Int32> = []
         for app in runningApps where app.activationPolicy == .regular {
-            appPIDs[app.processIdentifier] = app
+            regularAppPIDs.insert(app.processIdentifier)
         }
 
         let byPID = Dictionary(uniqueKeysWithValues: processes.map { ($0.id, $0) })
 
-        // Walk up each process's parent chain to find which (if any) foreground
-        // app owns it, so e.g. a Chrome renderer helper folds under "Google Chrome".
-        func owningAppPID(for pid: Int32, depth: Int = 0) -> Int32? {
-            if appPIDs[pid] != nil { return pid }
+        // Fallback for the rare process that doesn't live inside a .app
+        // bundle at all (a bare Unix helper): walk up its parent chain to
+        // see whether a regular foreground app spawned it directly.
+        func parentOwningAppPID(for pid: Int32, depth: Int = 0) -> Int32? {
+            if regularAppPIDs.contains(pid) { return pid }
             guard depth < 16, let process = byPID[pid], process.parentPid > 1 else { return nil }
-            return owningAppPID(for: process.parentPid, depth: depth + 1)
+            return parentOwningAppPID(for: process.parentPid, depth: depth + 1)
         }
 
-        var membersByOwner: [Int32: [ProcessSnapshot]] = [:]
+        var membersByBundlePath: [String: [ProcessSnapshot]] = [:]
+        var membersByParentPID: [Int32: [ProcessSnapshot]] = [:]
         var unowned: [ProcessSnapshot] = []
 
         for process in processes {
-            if let owner = owningAppPID(for: process.id) {
-                membersByOwner[owner, default: []].append(process)
+            // Primary signal: the process's own executable path. A VM engine
+            // or helper spawned via launchd/XPC (not a direct fork of the
+            // app) has no parent-PID link back to its app, but it still runs
+            // from *inside* that app's .app bundle — e.g. Parallels'
+            // prl_vm_app lives under "Parallels Desktop.app/Contents/...".
+            // Matching on the bundle path catches those the parent walk
+            // misses entirely.
+            if let outerPath = outerAppBundlePath(from: process.bundlePath) {
+                let owningApp = appsByBundlePath[outerPath]
+                if owningApp == nil || owningApp?.activationPolicy == .regular {
+                    membersByBundlePath[outerPath, default: []].append(process)
+                    continue
+                }
+            }
+            if let owner = parentOwningAppPID(for: process.id) {
+                membersByParentPID[owner, default: []].append(process)
             } else {
                 unowned.append(process)
             }
         }
 
-        let apps: [ProcessGroup] = appPIDs.compactMap { pid, app in
-            guard let members = membersByOwner[pid], !members.isEmpty else { return nil }
-            let name = app.localizedName ?? members.first?.name ?? "pid \(pid)"
-            return ProcessGroup(
-                id: pid, name: name,
-                bundlePath: app.bundleURL?.path,
-                isApp: true, members: members
-            )
+        var apps: [ProcessGroup] = membersByBundlePath.compactMap { path, members in
+            guard !members.isEmpty else { return nil }
+            let app = appsByBundlePath[path]
+            let name = app?.localizedName ?? bundleDisplayName(for: path)
+            let representativePID = app?.processIdentifier ?? members[0].id
+            return ProcessGroup(id: representativePID, name: name, bundlePath: path, isApp: true, members: members)
+        }
+
+        apps += membersByParentPID.compactMap { pid, members in
+            guard !members.isEmpty else { return nil }
+            let app = runningApps.first { $0.processIdentifier == pid }
+            let name = app?.localizedName ?? members.first?.name ?? "pid \(pid)"
+            return ProcessGroup(id: pid, name: name, bundlePath: app?.bundleURL?.path, isApp: true, members: members)
         }
 
         let background: [ProcessGroup] = unowned.map { process in
@@ -52,5 +79,20 @@ public enum ProcessGrouping {
         }
 
         return (apps.sorted { $0.name < $1.name }, background.sorted { $0.name < $1.name })
+    }
+
+    /// The path through the outermost ".app" directory in an executable's
+    /// path, e.g. ".../Parallels Desktop.app/Contents/MacOS//Parallels
+    /// VM.app/Contents/MacOS/prl_vm_app" -> ".../Parallels Desktop.app".
+    /// Stopping at the *first* match is what folds a nested helper bundle
+    /// into its containing app rather than treating it as its own app.
+    private static func outerAppBundlePath(from executablePath: String?) -> String? {
+        guard let path = executablePath, let range = path.range(of: ".app/") else { return nil }
+        let throughTrailingSlash = path[path.startIndex..<range.upperBound]
+        return String(throughTrailingSlash.dropLast())
+    }
+
+    private static func bundleDisplayName(for bundlePath: String) -> String {
+        (bundlePath as NSString).lastPathComponent.replacingOccurrences(of: ".app", with: "")
     }
 }

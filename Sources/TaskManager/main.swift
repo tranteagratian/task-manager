@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TaskManagerCore
 
 struct TaskManagerApp: App {
     var body: some Scene {
@@ -26,12 +27,36 @@ func renderIcon(to path: String) {
     print("wrote \(path)")
 }
 
+func dumpGroups() {
+    let processSampler = ProcessSampler()
+    _ = processSampler.sample()
+    Thread.sleep(forTimeInterval: 1.5)
+    let processes = processSampler.sample()
+    let (apps, background) = ProcessGrouping.group(processes)
+    print("=== Apps (\(apps.count)) ===")
+    for group in apps.sorted(by: { $0.cpuPercent > $1.cpuPercent }) {
+        let pct = String(format: "%5.1f%%", group.cpuPercent)
+        let memberNames = group.members.map(\.name).joined(separator: ", ")
+        print("\(pct)  \(group.name)  members=\(group.members.count) [\(memberNames)]")
+    }
+    print("=== Background (\(background.count)) ===")
+    for group in background.sorted(by: { $0.cpuPercent > $1.cpuPercent }).prefix(10) {
+        let pct = String(format: "%5.1f%%", group.cpuPercent)
+        print("\(pct)  \(group.name)")
+    }
+}
+
 let arguments = CommandLine.arguments
 if let index = arguments.firstIndex(of: "--render-icon"), index + 1 < arguments.count {
     NSApplication.shared.setActivationPolicy(.accessory)
     MainActor.assumeIsolated {
         renderIcon(to: arguments[index + 1])
     }
+    exit(0)
+}
+
+if arguments.contains("--dump-groups") {
+    dumpGroups()
     exit(0)
 }
 
