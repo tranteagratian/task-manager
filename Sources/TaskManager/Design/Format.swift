@@ -9,6 +9,10 @@ enum Format {
         String(format: "%.1f%%", value)
     }
 
+    static func celsius(_ value: Double) -> String {
+        String(format: "%.0f°C", value)
+    }
+
     static func bytes(_ value: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(value), countStyle: .memory)
     }

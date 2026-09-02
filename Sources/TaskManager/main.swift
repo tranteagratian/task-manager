@@ -73,4 +73,10 @@ if arguments.contains("--dump-groups") {
     exit(0)
 }
 
+if arguments.contains("--dump-temps") {
+    print("CPU:", SMCTemperature.shared.cpuTemperatureCelsius() as Any)
+    print("GPU:", SMCTemperature.shared.gpuTemperatureCelsius() as Any)
+    exit(0)
+}
+
 TaskManagerApp.main()

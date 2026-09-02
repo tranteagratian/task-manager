@@ -12,6 +12,9 @@ struct MenuBarLabelView: View {
             metric("memorychip", Format.percent(model.totalMemoryPercent))
             metric("internaldrive", Format.compactRate(model.system.diskReadBytesPerSec + model.system.diskWriteBytesPerSec))
             metric("network", Format.compactRate(model.system.networkInBytesPerSec + model.system.networkOutBytesPerSec))
+            if let temp = model.system.cpuTemperatureCelsius {
+                metric("thermometer.medium", Format.celsius(temp))
+            }
         }
         .font(.system(size: 12, weight: .regular).monospacedDigit())
     }
@@ -45,6 +48,9 @@ struct MenuBarContentView: View {
                 Format.megabitsPerSecond(model.system.networkInBytesPerSec + model.system.networkOutBytesPerSec),
                 nil
             )
+            if let temp = model.system.cpuTemperatureCelsius {
+                row("Temperature", "thermometer.medium", Format.celsius(temp), temp / 100)
+            }
 
             Divider()
 

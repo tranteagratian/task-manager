@@ -34,7 +34,9 @@ public final class SystemSampler {
             networkOutBytesPerSec: netOut,
             processCount: Self.processCount(),
             threadCount: Self.threadCount(),
-            uptime: Self.uptime()
+            uptime: Self.uptime(),
+            cpuTemperatureCelsius: SMCTemperature.shared.cpuTemperatureCelsius(),
+            gpuTemperatureCelsius: SMCTemperature.shared.gpuTemperatureCelsius()
         )
     }
 

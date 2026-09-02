@@ -12,12 +12,15 @@ public struct SystemSnapshot: Sendable {
     public var processCount: Int
     public var threadCount: Int
     public var uptime: TimeInterval
+    public var cpuTemperatureCelsius: Double?
+    public var gpuTemperatureCelsius: Double?
 
     public static let zero = SystemSnapshot(
         cpuPercent: 0, cpuPerCore: [], memoryUsedBytes: 0, memoryTotalBytes: 0,
         diskReadBytesPerSec: 0, diskWriteBytesPerSec: 0,
         networkInBytesPerSec: 0, networkOutBytesPerSec: 0,
-        processCount: 0, threadCount: 0, uptime: 0
+        processCount: 0, threadCount: 0, uptime: 0,
+        cpuTemperatureCelsius: nil, gpuTemperatureCelsius: nil
     )
 }
 

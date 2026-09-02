@@ -12,6 +12,7 @@ final class TaskManagerViewModel: ObservableObject {
     @Published private(set) var memoryHistory = RollingSeries()
     @Published private(set) var diskHistory = RollingSeries()
     @Published private(set) var networkHistory = RollingSeries()
+    @Published private(set) var temperatureHistory = RollingSeries()
 
     private let processSampler = ProcessSampler()
     private let systemSampler = SystemSampler()
@@ -61,6 +62,9 @@ final class TaskManagerViewModel: ObservableObject {
         memoryHistory.append(memoryPercent)
         diskHistory.append(snapshot.diskReadBytesPerSec + snapshot.diskWriteBytesPerSec)
         networkHistory.append(snapshot.networkInBytesPerSec + snapshot.networkOutBytesPerSec)
+        if let temp = snapshot.cpuTemperatureCelsius {
+            temperatureHistory.append(temp)
+        }
     }
 
     var totalCPUPercent: Double { system.cpuPercent }

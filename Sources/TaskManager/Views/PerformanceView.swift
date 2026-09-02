@@ -7,6 +7,7 @@ private enum PerformanceMetric: String, CaseIterable, Identifiable {
     case memory = "Memory"
     case disk = "Disk"
     case network = "Network"
+    case temperature = "Temperature"
     var id: String { rawValue }
 }
 
@@ -58,6 +59,7 @@ private struct MetricTile: View {
         case .memory: return model.memoryHistory.values
         case .disk: return model.diskHistory.values
         case .network: return model.networkHistory.values
+        case .temperature: return model.temperatureHistory.values
         }
     }
 
@@ -70,6 +72,8 @@ private struct MetricTile: View {
             return Format.bytesPerSecond(model.system.diskReadBytesPerSec + model.system.diskWriteBytesPerSec)
         case .network:
             return Format.megabitsPerSecond(model.system.networkInBytesPerSec + model.system.networkOutBytesPerSec)
+        case .temperature:
+            return model.system.cpuTemperatureCelsius.map(Format.celsius) ?? "—"
         }
     }
 }
@@ -112,7 +116,7 @@ private struct DetailPane: View {
             HStack {
                 Text("60 seconds").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Text("\(Int(yMax))\(metric == .cpu || metric == .memory ? "%" : "")")
+                Text("\(Int(yMax))\(yAxisUnit)")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -128,13 +132,23 @@ private struct DetailPane: View {
         case .memory: return model.memoryHistory.values
         case .disk: return model.diskHistory.values
         case .network: return model.networkHistory.values
+        case .temperature: return model.temperatureHistory.values
         }
     }
 
     private var yMax: Double {
         switch metric {
         case .cpu, .memory: return 100
+        case .temperature: return 110
         default: return max(history.max() ?? 1, 1)
+        }
+    }
+
+    private var yAxisUnit: String {
+        switch metric {
+        case .cpu, .memory: return "%"
+        case .temperature: return "°C"
+        case .disk, .network: return ""
         }
     }
 
@@ -158,6 +172,9 @@ private struct DetailPane: View {
             case .network:
                 stat("Send", Format.megabitsPerSecond(model.system.networkOutBytesPerSec))
                 stat("Receive", Format.megabitsPerSecond(model.system.networkInBytesPerSec))
+            case .temperature:
+                stat("CPU", model.system.cpuTemperatureCelsius.map(Format.celsius) ?? "—")
+                stat("GPU", model.system.gpuTemperatureCelsius.map(Format.celsius) ?? "—")
             }
         }
     }
