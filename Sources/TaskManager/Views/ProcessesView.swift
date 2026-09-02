@@ -9,8 +9,8 @@ enum ProcessSortKey: String {
 struct ProcessesView: View {
     @EnvironmentObject var model: TaskManagerViewModel
     @State private var searchText: String = ""
-    @State private var sortKey: ProcessSortKey = .name
-    @State private var sortAscending: Bool = true
+    @State private var sortKey: ProcessSortKey = .cpu
+    @State private var sortAscending: Bool = false
 
     private var filteredApps: [ProcessGroup] {
         sort(filter(model.appGroups))
