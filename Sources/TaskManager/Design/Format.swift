@@ -32,6 +32,15 @@ enum Format {
         return String(format: "%.1f Mbps", mbps)
     }
 
+    /// Short enough for the menu bar: "0K", "340K", "1.2M" — no unit
+    /// suffix spelled out, no decimal past one digit.
+    static func compactRate(_ bytesPerSecond: Double) -> String {
+        let kb = bytesPerSecond / 1024
+        if kb < 1 { return "0K" }
+        if kb < 1000 { return String(format: "%.0fK", kb) }
+        return String(format: "%.1fM", kb / 1024)
+    }
+
     static func uptime(_ seconds: TimeInterval) -> String {
         let total = Int(seconds)
         let days = total / 86_400

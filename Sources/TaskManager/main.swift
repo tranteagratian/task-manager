@@ -3,11 +3,24 @@ import SwiftUI
 import TaskManagerCore
 
 struct TaskManagerApp: App {
+    @StateObject private var model = TaskManagerViewModel()
+
     var body: some Scene {
-        WindowGroup("Task Manager") {
+        WindowGroup("Task Manager", id: "main") {
             RootView()
+                .environmentObject(model)
+                .task { model.start() }
         }
         .windowResizability(.contentSize)
+
+        MenuBarExtra {
+            MenuBarContentView()
+                .environmentObject(model)
+        } label: {
+            MenuBarLabelView()
+                .environmentObject(model)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 

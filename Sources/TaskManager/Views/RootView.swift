@@ -34,7 +34,7 @@ private enum PlannedTab: String, CaseIterable, Identifiable {
 }
 
 struct RootView: View {
-    @StateObject private var model = TaskManagerViewModel()
+    @EnvironmentObject var model: TaskManagerViewModel
     @State private var selectedTab: Tab = .processes
 
     var body: some View {
@@ -44,9 +44,6 @@ struct RootView: View {
             content
         }
         .frame(minWidth: 900, minHeight: 600)
-        .environmentObject(model)
-        .onAppear { model.start() }
-        .onDisappear { model.stop() }
     }
 
     private var sidebar: some View {
