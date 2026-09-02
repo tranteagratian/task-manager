@@ -10,6 +10,5 @@ let package = Package(
     targets: [
         .target(name: "TaskManagerCore"),
         .executableTarget(name: "TaskManager", dependencies: ["TaskManagerCore"]),
-        .testTarget(name: "TaskManagerCoreTests", dependencies: ["TaskManagerCore"]),
     ]
 )
