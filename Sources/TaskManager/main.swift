@@ -21,6 +21,10 @@ struct TaskManagerApp: App {
                 .environmentObject(model)
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView()
+        }
     }
 }
 

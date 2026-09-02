@@ -35,6 +35,7 @@ private enum PlannedTab: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @EnvironmentObject var model: TaskManagerViewModel
+    @Environment(\.openSettings) private var openSettings
     @State private var selectedTab: Tab = .processes
 
     var body: some View {
@@ -58,6 +59,10 @@ struct RootView: View {
                 sidebarButton(title: tab.rawValue, systemImage: tab.systemImage, isSelected: false, enabled: false) {}
             }
             Spacer()
+            sidebarButton(title: "Settings", systemImage: "gearshape", isSelected: false) {
+                openSettings()
+            }
+            .padding(.bottom, 8)
         }
         .padding(.top, 12)
         .frame(width: 56)

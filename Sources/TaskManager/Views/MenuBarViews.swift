@@ -5,15 +5,35 @@ import SwiftUI
 /// the app so it costs nothing extra to sample.
 struct MenuBarLabelView: View {
     @EnvironmentObject var model: TaskManagerViewModel
+    @AppStorage(MenuBarPreferenceKey.showCPU) private var showCPU = true
+    @AppStorage(MenuBarPreferenceKey.showMemory) private var showMemory = true
+    @AppStorage(MenuBarPreferenceKey.showDisk) private var showDisk = true
+    @AppStorage(MenuBarPreferenceKey.showNetwork) private var showNetwork = true
+    @AppStorage(MenuBarPreferenceKey.showTemperature) private var showTemperature = true
+
+    private var anyEnabled: Bool { showCPU || showMemory || showDisk || showNetwork || showTemperature }
 
     var body: some View {
         HStack(spacing: 6) {
-            metric("cpu", Format.percent(model.system.cpuPercent))
-            metric("memorychip", Format.percent(model.totalMemoryPercent))
-            metric("internaldrive", Format.compactRate(model.system.diskReadBytesPerSec + model.system.diskWriteBytesPerSec))
-            metric("network", Format.compactRate(model.system.networkInBytesPerSec + model.system.networkOutBytesPerSec))
-            if let temp = model.system.cpuTemperatureCelsius {
+            if showCPU {
+                metric("cpu", Format.percent(model.system.cpuPercent))
+            }
+            if showMemory {
+                metric("memorychip", Format.percent(model.totalMemoryPercent))
+            }
+            if showDisk {
+                metric("internaldrive", Format.compactRate(model.system.diskReadBytesPerSec + model.system.diskWriteBytesPerSec))
+            }
+            if showNetwork {
+                metric("network", Format.compactRate(model.system.networkInBytesPerSec + model.system.networkOutBytesPerSec))
+            }
+            if showTemperature, let temp = model.system.cpuTemperatureCelsius {
                 metric("thermometer.medium", Format.celsius(temp))
+            }
+            // Everything turned off would make the menu bar item invisible
+            // and unclickable, with no way back in — always leave a handle.
+            if !anyEnabled {
+                Image(systemName: "gauge.with.dots.needle.50percent")
             }
         }
         .font(.system(size: 12, weight: .regular).monospacedDigit())
@@ -33,6 +53,7 @@ struct MenuBarLabelView: View {
 struct MenuBarContentView: View {
     @EnvironmentObject var model: TaskManagerViewModel
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -60,6 +81,16 @@ struct MenuBarContentView: View {
                 openWindow(id: "main")
             } label: {
                 Label("Open Task Manager", systemImage: "square.grid.2x2")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate(ignoringOtherApps: true)
+                openSettings()
+            } label: {
+                Label("Menu Bar Settings…", systemImage: "gearshape")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
