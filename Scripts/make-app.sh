@@ -30,15 +30,14 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/TaskManager"
 
-echo "==> Drawing icon"
-"$BINARY" --render-icon "$BUILD_DIR/icon.png" > /dev/null
+echo "==> Building icon"
 ICONSET="$BUILD_DIR/TaskManager.iconset"
 rm -rf "$ICONSET"
 mkdir -p "$ICONSET"
 for size in 16 32 128 256 512; do
-    sips -z "$size" "$size" "$BUILD_DIR/icon.png" \
+    sips -z "$size" "$size" "Assets/icon-source.png" \
         --out "$ICONSET/icon_${size}x${size}.png" > /dev/null
-    sips -z "$((size * 2))" "$((size * 2))" "$BUILD_DIR/icon.png" \
+    sips -z "$((size * 2))" "$((size * 2))" "Assets/icon-source.png" \
         --out "$ICONSET/icon_${size}x${size}@2x.png" > /dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/TaskManager.icns"
