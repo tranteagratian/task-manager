@@ -48,6 +48,16 @@ public struct ProcessGroup: Identifiable, Hashable, Sendable {
     public var diskReadBytesPerSec: Double { members.reduce(0) { $0 + $1.diskReadBytesPerSec } }
     public var diskWriteBytesPerSec: Double { members.reduce(0) { $0 + $1.diskWriteBytesPerSec } }
 
+    /// Processes whose death takes the whole session down with them —
+    /// ending them isn't "close an app", it's an instant logout or crash.
+    /// Windows Task Manager similarly refuses to end critical system
+    /// processes rather than let a misclick black-screen the machine.
+    private static let protectedNames: Set<String> = ["loginwindow", "WindowServer", "launchd", "kernel_task"]
+
+    public var isProtected: Bool {
+        members.contains { $0.id <= 1 || Self.protectedNames.contains($0.name) }
+    }
+
     public init(id: Int32, name: String, bundlePath: String?, isApp: Bool, members: [ProcessSnapshot]) {
         self.id = id
         self.name = name

@@ -66,4 +66,24 @@ final class TaskManagerViewModel: ObservableObject {
     var totalMemoryPercent: Double {
         system.memoryTotalBytes > 0 ? Double(system.memoryUsedBytes) / Double(system.memoryTotalBytes) * 100 : 0
     }
+
+    // MARK: - Ending tasks
+
+    func endTask(_ group: ProcessGroup) {
+        guard !group.isProtected else { return }
+        for member in group.members {
+            ProcessTermination.requestTermination(pid: member.id)
+        }
+    }
+
+    func forceEndTask(_ group: ProcessGroup) {
+        guard !group.isProtected else { return }
+        for member in group.members {
+            ProcessTermination.forceKill(pid: member.id)
+        }
+    }
+
+    func isStillRunning(_ group: ProcessGroup) -> Bool {
+        group.members.contains { ProcessTermination.isAlive(pid: $0.id) }
+    }
 }

@@ -6,17 +6,31 @@ enum ProcessSortKey: String {
     case name, cpu, memory, disk
 }
 
+private struct SelectionKey: Equatable {
+    let isApp: Bool
+    let id: Int32
+}
+
 struct ProcessesView: View {
     @EnvironmentObject var model: TaskManagerViewModel
     @State private var searchText: String = ""
     @State private var sortKey: ProcessSortKey = .cpu
     @State private var sortAscending: Bool = false
+    @State private var selection: SelectionKey?
+    @State private var pendingEndTask: ProcessGroup?
+    @State private var pendingForceQuit: ProcessGroup?
 
     private var filteredApps: [ProcessGroup] {
         sort(filter(model.appGroups))
     }
     private var filteredBackground: [ProcessGroup] {
         sort(filter(model.backgroundGroups))
+    }
+
+    private var selectedGroup: ProcessGroup? {
+        guard let selection else { return nil }
+        let pool = selection.isApp ? filteredApps : filteredBackground
+        return pool.first { $0.id == selection.id }
     }
 
     private func filter(_ groups: [ProcessGroup]) -> [ProcessGroup] {
@@ -62,16 +76,14 @@ struct ProcessesView: View {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Section {
                         ForEach(filteredApps) { group in
-                            ProcessRowView(group: group, maxCPU: maxCPU, maxMemory: maxMemory, maxDisk: maxDisk)
-                            Divider().padding(.leading, 32)
+                            row(for: group, isApp: true)
                         }
                     } header: {
                         SectionHeader(title: "Apps", count: filteredApps.count)
                     }
                     Section {
                         ForEach(filteredBackground) { group in
-                            ProcessRowView(group: group, maxCPU: maxCPU, maxMemory: maxMemory, maxDisk: maxDisk)
-                            Divider().padding(.leading, 32)
+                            row(for: group, isApp: false)
                         }
                     } header: {
                         SectionHeader(title: "Background processes", count: filteredBackground.count)
@@ -80,6 +92,54 @@ struct ProcessesView: View {
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
+        .alert("End \(pendingEndTask?.name ?? "")?", isPresented: Binding(
+            get: { pendingEndTask != nil }, set: { if !$0 { pendingEndTask = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { pendingEndTask = nil }
+            Button("End Task", role: .destructive) {
+                guard let group = pendingEndTask else { return }
+                model.endTask(group)
+                pendingEndTask = nil
+                scheduleForceQuitCheck(for: group)
+            }
+        } message: {
+            Text("This immediately closes the app and any unsaved work in it will be lost.")
+        }
+        .alert("\(pendingForceQuit?.name ?? "") isn't responding", isPresented: Binding(
+            get: { pendingForceQuit != nil }, set: { if !$0 { pendingForceQuit = nil } }
+        )) {
+            Button("Wait") { pendingForceQuit = nil }
+            Button("Force Quit", role: .destructive) {
+                guard let group = pendingForceQuit else { return }
+                model.forceEndTask(group)
+                pendingForceQuit = nil
+            }
+        } message: {
+            Text("It didn't quit on its own. Force quitting skips its normal cleanup.")
+        }
+    }
+
+    private func row(for group: ProcessGroup, isApp: Bool) -> some View {
+        let key = SelectionKey(isApp: isApp, id: group.id)
+        return VStack(spacing: 0) {
+            ProcessRowView(group: group, maxCPU: maxCPU, maxMemory: maxMemory, maxDisk: maxDisk, isSelected: selection == key)
+                .contentShape(Rectangle())
+                .onTapGesture { selection = key }
+                .contextMenu {
+                    Button("End Task") { pendingEndTask = group }
+                        .disabled(group.isProtected)
+                }
+            Divider().padding(.leading, 32)
+        }
+    }
+
+    private func scheduleForceQuitCheck(for group: ProcessGroup) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if model.isStillRunning(group) {
+                pendingForceQuit = group
+            }
+        }
     }
 
     private var header: some View {
@@ -87,6 +147,13 @@ struct ProcessesView: View {
             Text("Processes")
                 .font(.title2.weight(.semibold))
             Spacer()
+            Button {
+                if let group = selectedGroup { pendingEndTask = group }
+            } label: {
+                Label("End Task", systemImage: "xmark.circle")
+            }
+            .disabled(selectedGroup == nil || selectedGroup?.isProtected == true)
+            .help(selectedGroup?.isProtected == true ? "This is a critical system process and can't be ended here." : "")
             TextField("Type a name or PID…", text: $searchText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
@@ -158,6 +225,7 @@ private struct ProcessRowView: View {
     let maxCPU: Double
     let maxMemory: UInt64
     let maxDisk: Double
+    let isSelected: Bool
 
     private var diskRate: Double { group.diskReadBytesPerSec + group.diskWriteBytesPerSec }
 
@@ -183,6 +251,7 @@ private struct ProcessRowView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
+        .background(isSelected ? Color.accentColor.opacity(0.25) : .clear)
     }
 
     private func metricCell(_ text: String, fraction: Double) -> some View {
