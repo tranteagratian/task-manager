@@ -4,23 +4,22 @@ import TaskManagerCore
 
 struct TaskManagerApp: App {
     @StateObject private var model = TaskManagerViewModel()
+    @StateObject private var actions = AppActions()
+    @State private var statusBarController: StatusBarController?
 
     var body: some Scene {
         WindowGroup("Task Manager", id: "main") {
             RootView()
                 .environmentObject(model)
-                .task { model.start() }
+                .environmentObject(actions)
+                .task {
+                    model.start()
+                    if statusBarController == nil {
+                        statusBarController = StatusBarController(model: model, actions: actions)
+                    }
+                }
         }
         .windowResizability(.contentSize)
-
-        MenuBarExtra {
-            MenuBarContentView()
-                .environmentObject(model)
-        } label: {
-            MenuBarLabelView()
-                .environmentObject(model)
-        }
-        .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView()

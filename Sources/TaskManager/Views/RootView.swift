@@ -35,7 +35,9 @@ private enum PlannedTab: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @EnvironmentObject var model: TaskManagerViewModel
+    @EnvironmentObject var actions: AppActions
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @State private var selectedTab: Tab = .processes
 
     var body: some View {
@@ -45,6 +47,10 @@ struct RootView: View {
             content
         }
         .frame(minWidth: 900, minHeight: 600)
+        .onAppear {
+            actions.openMainWindow = openWindow
+            actions.openSettingsWindow = openSettings
+        }
     }
 
     private var sidebar: some View {

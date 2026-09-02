@@ -4,7 +4,7 @@ import SwiftUI
 /// Memory, Disk and Network, refreshed on the same timer as the rest of
 /// the app so it costs nothing extra to sample.
 struct MenuBarLabelView: View {
-    @EnvironmentObject var model: TaskManagerViewModel
+    @ObservedObject var model: TaskManagerViewModel
     @AppStorage(MenuBarPreferenceKey.showCPU) private var showCPU = true
     @AppStorage(MenuBarPreferenceKey.showMemory) private var showMemory = true
     @AppStorage(MenuBarPreferenceKey.showDisk) private var showDisk = true
@@ -37,6 +37,12 @@ struct MenuBarLabelView: View {
             }
         }
         .font(.system(size: 12, weight: .regular).monospacedDigit())
+        // MenuBarExtra otherwise caches the status item's width from an
+        // early render (often while data is still 0/nil and the row is
+        // narrower than its steady state) and never widens it again as
+        // more metrics turn on or values grow — this forces it to report
+        // its true intrinsic width on every update instead.
+        .fixedSize()
     }
 
     private func metric(_ symbol: String, _ value: String) -> some View {
@@ -51,9 +57,9 @@ struct MenuBarLabelView: View {
 /// The dropdown panel when the menu bar item is clicked: the same four
 /// numbers at a readable size, plus quick access to the full window.
 struct MenuBarContentView: View {
-    @EnvironmentObject var model: TaskManagerViewModel
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.openSettings) private var openSettings
+    @ObservedObject var model: TaskManagerViewModel
+    let onOpenMainWindow: () -> Void
+    let onOpenSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -75,21 +81,13 @@ struct MenuBarContentView: View {
 
             Divider()
 
-            Button {
-                NSApp.setActivationPolicy(.regular)
-                NSApp.activate(ignoringOtherApps: true)
-                openWindow(id: "main")
-            } label: {
+            Button(action: onOpenMainWindow) {
                 Label("Open Task Manager", systemImage: "square.grid.2x2")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
 
-            Button {
-                NSApp.setActivationPolicy(.regular)
-                NSApp.activate(ignoringOtherApps: true)
-                openSettings()
-            } label: {
+            Button(action: onOpenSettings) {
                 Label("Menu Bar Settings…", systemImage: "gearshape")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
