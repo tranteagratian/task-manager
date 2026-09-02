@@ -6,7 +6,7 @@ import Foundation
 /// back with zeroed resource fields, same as Activity Monitor without admin.
 public final class ProcessSampler {
     private struct PreviousUsage {
-        let cpuTimeNanos: UInt64
+        let cpuTimeTicks: UInt64
         let diskReadBytes: UInt64
         let diskWriteBytes: UInt64
         let timestamp: DispatchTime
@@ -14,9 +14,17 @@ public final class ProcessSampler {
 
     private var previous: [Int32: PreviousUsage] = [:]
     private let coreCount: Double
+    /// ri_user_time/ri_system_time are Mach absolute time ticks, not
+    /// nanoseconds — on Apple Silicon the timebase is roughly 125/3
+    /// (~41.7 ns/tick), so reading them as raw nanoseconds understated CPU
+    /// time by ~24x and made everything round down to 0%.
+    private let ticksToNanoseconds: Double
 
     public init() {
         coreCount = Double(max(ProcessInfo.processInfo.activeProcessorCount, 1))
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        ticksToNanoseconds = timebase.denom > 0 ? Double(timebase.numer) / Double(timebase.denom) : 1
     }
 
     public func sample() -> [ProcessSnapshot] {
@@ -33,7 +41,7 @@ public final class ProcessSampler {
             let path = Self.path(for: pid)
             let parentPid = Self.parentPID(of: pid)
 
-            let cpuTimeNanos = rusage.ri_user_time &+ rusage.ri_system_time
+            let cpuTimeTicks = rusage.ri_user_time &+ rusage.ri_system_time
             let diskRead = rusage.ri_diskio_bytesread
             let diskWrite = rusage.ri_diskio_byteswritten
 
@@ -44,8 +52,9 @@ public final class ProcessSampler {
             if let prev = previous[pid] {
                 let elapsedSeconds = Double(now.uptimeNanoseconds - prev.timestamp.uptimeNanoseconds) / 1_000_000_000
                 if elapsedSeconds > 0 {
-                    let deltaCPUNanos = cpuTimeNanos >= prev.cpuTimeNanos ? cpuTimeNanos - prev.cpuTimeNanos : 0
-                    let rawPercent = (Double(deltaCPUNanos) / 1_000_000_000) / elapsedSeconds * 100
+                    let deltaCPUTicks = cpuTimeTicks >= prev.cpuTimeTicks ? cpuTimeTicks - prev.cpuTimeTicks : 0
+                    let deltaCPUNanos = Double(deltaCPUTicks) * ticksToNanoseconds
+                    let rawPercent = (deltaCPUNanos / 1_000_000_000) / elapsedSeconds * 100
                     // Normalize to whole-system capacity (Windows Task Manager
                     // behavior) instead of Activity Monitor's per-core sum,
                     // which is what makes 400%+ readings show up there.
@@ -59,7 +68,7 @@ public final class ProcessSampler {
             }
 
             nextPrevious[pid] = PreviousUsage(
-                cpuTimeNanos: cpuTimeNanos, diskReadBytes: diskRead,
+                cpuTimeTicks: cpuTimeTicks, diskReadBytes: diskRead,
                 diskWriteBytes: diskWrite, timestamp: now
             )
 
