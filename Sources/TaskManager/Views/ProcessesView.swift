@@ -2,20 +2,50 @@ import AppKit
 import SwiftUI
 import TaskManagerCore
 
+enum ProcessSortKey: String {
+    case name, cpu, memory, disk
+}
+
 struct ProcessesView: View {
     @EnvironmentObject var model: TaskManagerViewModel
     @State private var searchText: String = ""
+    @State private var sortKey: ProcessSortKey = .name
+    @State private var sortAscending: Bool = true
 
     private var filteredApps: [ProcessGroup] {
-        filter(model.appGroups)
+        sort(filter(model.appGroups))
     }
     private var filteredBackground: [ProcessGroup] {
-        filter(model.backgroundGroups)
+        sort(filter(model.backgroundGroups))
     }
 
     private func filter(_ groups: [ProcessGroup]) -> [ProcessGroup] {
         guard !searchText.isEmpty else { return groups }
         return groups.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    private func sort(_ groups: [ProcessGroup]) -> [ProcessGroup] {
+        let sorted: [ProcessGroup]
+        switch sortKey {
+        case .name:
+            sorted = groups.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .cpu:
+            sorted = groups.sorted { $0.cpuPercent < $1.cpuPercent }
+        case .memory:
+            sorted = groups.sorted { $0.memoryBytes < $1.memoryBytes }
+        case .disk:
+            sorted = groups.sorted { ($0.diskReadBytesPerSec + $0.diskWriteBytesPerSec) < ($1.diskReadBytesPerSec + $1.diskWriteBytesPerSec) }
+        }
+        return sortAscending ? sorted : sorted.reversed()
+    }
+
+    private func toggleSort(_ key: ProcessSortKey) {
+        if sortKey == key {
+            sortAscending.toggle()
+        } else {
+            sortKey = key
+            sortAscending = key == .name
+        }
     }
 
     private var maxCPU: Double { max((filteredApps + filteredBackground).map(\.cpuPercent).max() ?? 1, 1) }
@@ -27,7 +57,7 @@ struct ProcessesView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            ColumnHeaderRow()
+            ColumnHeaderRow(sortKey: sortKey, sortAscending: sortAscending, onSelect: toggleSort)
             ScrollView {
                 LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Section {
@@ -82,12 +112,20 @@ private struct SectionHeader: View {
 }
 
 private struct ColumnHeaderRow: View {
+    let sortKey: ProcessSortKey
+    let sortAscending: Bool
+    let onSelect: (ProcessSortKey) -> Void
+
     var body: some View {
         HStack(spacing: 0) {
-            Text("Name").frame(maxWidth: .infinity, alignment: .leading)
-            Text("CPU").frame(width: 80, alignment: .trailing)
-            Text("Memory").frame(width: 90, alignment: .trailing)
-            Text("Disk").frame(width: 90, alignment: .trailing)
+            headerButton("Name", key: .name, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            headerButton("CPU", key: .cpu, alignment: .trailing)
+                .frame(width: 80, alignment: .trailing)
+            headerButton("Memory", key: .memory, alignment: .trailing)
+                .frame(width: 90, alignment: .trailing)
+            headerButton("Disk", key: .disk, alignment: .trailing)
+                .frame(width: 90, alignment: .trailing)
             Text("Network").frame(width: 90, alignment: .trailing)
         }
         .font(.caption.weight(.medium))
@@ -96,6 +134,22 @@ private struct ColumnHeaderRow: View {
         .padding(.vertical, 6)
         .background(Color(nsColor: .controlBackgroundColor))
         Divider()
+    }
+
+    private func headerButton(_ title: String, key: ProcessSortKey, alignment: Alignment) -> some View {
+        Button { onSelect(key) } label: {
+            HStack(spacing: 4) {
+                if alignment == .trailing { Spacer(minLength: 0) }
+                Text(title)
+                if sortKey == key {
+                    Image(systemName: sortAscending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .bold))
+                }
+                if alignment == .leading { Spacer(minLength: 0) }
+            }
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
     }
 }
 

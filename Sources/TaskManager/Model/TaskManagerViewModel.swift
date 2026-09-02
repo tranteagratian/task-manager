@@ -15,18 +15,34 @@ final class TaskManagerViewModel: ObservableObject {
     private let processSampler = ProcessSampler()
     private let systemSampler = SystemSampler()
     private var timer: Timer?
+    private var hasStarted = false
 
     func start(interval: TimeInterval = 1.5) {
-        guard timer == nil else { return }
-        refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+        guard !hasStarted else { return }
+        hasStarted = true
+
+        // The samplers compute CPU/disk/network as deltas between two calls,
+        // so the very first sample has nothing to diff against and reads as
+        // zero. Warm them up with a throwaway call before the first reading
+        // that actually gets recorded, so the charts don't open with a false
+        // zero baseline.
+        _ = processSampler.sample()
+        _ = systemSampler.sample()
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard let self else { return }
+            self.refresh()
+            self.timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.refresh() }
+            }
         }
     }
 
     func stop() {
         timer?.invalidate()
         timer = nil
+        hasStarted = false
     }
 
     private func refresh() {
