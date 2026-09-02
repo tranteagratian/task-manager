@@ -22,8 +22,17 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                HStack {
+                    Text("Developed by")
+                        .foregroundStyle(.secondary)
+                    Link("tranteagratian", destination: URL(string: "https://github.com/tranteagratian/task-manager")!)
+                }
+                .font(.callout)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 340, height: 260)
+        .frame(width: 340, height: 320)
     }
 }
