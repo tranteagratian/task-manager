@@ -6,6 +6,11 @@ per-core, so an 8-core Mac can show 400%+ for a single busy app. This
 normalizes CPU% to the whole system's capacity instead — a process pegging
 one core on an 8-core Mac reads ~12%, not ~100%, matching what Windows shows.
 
+<p align="center">
+  <img src="Assets/screenshot-processes.png" width="440" alt="Processes tab">
+  <img src="Assets/screenshot-performance.png" width="440" alt="Performance tab">
+</p>
+
 ## What it does
 
 - **Processes** — grouped into Apps / Background processes, sortable columns
